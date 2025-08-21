@@ -18,12 +18,12 @@ from playwright.sync_api import sync_playwright
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
 # Use a one-time command to install the browsers for Playwright
-@st.cache_resource
-def install_playwright_browsers():
-    subprocess.check_call(["playwright", "install", "chromium"])
-    return True
-
-install_playwright_browsers()
+# This is a robust way to ensure the browser is available
+try:
+    # Check if the browser is already installed
+    subprocess.run(["playwright", "install", "--with-deps", "chromium"], check=True)
+except subprocess.CalledProcessError as e:
+    st.error(f"Failed to install Playwright browsers: {e}")
 
 # =========================================================================
 # 2. CORE LOGIC FUNCTIONS
