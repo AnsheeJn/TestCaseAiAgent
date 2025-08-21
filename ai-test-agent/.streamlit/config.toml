@@ -1,2 +1,2 @@
 [runner]
-post_install = "playwright install chromium"
+post_install = "playwright install firefox"
