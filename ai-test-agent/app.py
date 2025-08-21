@@ -5,6 +5,7 @@
 # Copy these import statements from your original script
 # =========================================================================
 import requests
+from selenium.webdriver.chrome.service import Service
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -150,6 +151,18 @@ if st.button("Generate Test Cases"):
                             file_name=output_filename,
                             mime="text/plain"
                         )
+                    with st.spinner("Extracting components and capturing screenshot..."):
+                        # Initialize Selenium driver with explicit paths
+                            options = Options()
+                            options.headless = True
+                            options.add_argument('--no-sandbox')
+                            options.add_argument('--disable-dev-shm-usage')
+
+                            # Tell Selenium where to find the browser and driver
+                            options.binary_location = "/usr/bin/chromium"
+                            service = Service(executable_path="/usr/bin/chromedriver")
+    
+                            driver = webdriver.Chrome(service=service, options=options)    
                 else:
                     st.error("Failed to generate test cases.")
                     
