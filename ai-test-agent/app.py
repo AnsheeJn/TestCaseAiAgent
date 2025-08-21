@@ -19,9 +19,8 @@ genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
 # Use a one-time command to install the browsers for Playwright
 # This is a robust way to ensure the browser is available
-try:
-    # Check if the browser is already installed
-    subprocess.run(["playwright", "install", "--with-deps", "chromium"], check=True)
+   # We now install the firefox browser
+    subprocess.run(["playwright", "install", "--with-deps", "firefox"], check=True)
 except subprocess.CalledProcessError as e:
     st.error(f"Failed to install Playwright browsers: {e}")
 
@@ -103,7 +102,7 @@ if st.button("Generate Test Cases"):
             
             # This is the new Playwright block
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.firefox.launch(headless=True)
                 page = browser.new_page()
 
                 image_path = "full_page_screenshot.png"
