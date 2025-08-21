@@ -1,8 +1,7 @@
 streamlit
-selenium
 google-generativeai
 Pillow
 requests
 beautifulsoup4
-webdriver-manager
 protobuf
+playwright
