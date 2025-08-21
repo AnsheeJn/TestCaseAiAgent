@@ -1,18 +1,32 @@
 import streamlit as st
-from openai import OpenAI
+import google.generativeai as genai
+import pandas as pd
+import re
 
-# Initialize OpenAI client
-client = OpenAI(api_key="YOUR_API_KEY")
+# -------------------------
+# Configure Gemini API
+# -------------------------
+genai.configure(api_key="YOUR_GEMINI_API_KEY")
 
-st.title("AI Test Case Generator")
-st.write("Generate Manual + Automated Regression Test Cases for any website/app feature")
+st.set_page_config(page_title="AI Test Case Generator", layout="wide")
+st.title("🧪 AI Test Case Generator")
+st.write("Generate Manual + Automated Regression Test Cases for any website or feature using **Gemini**.")
 
-# User input
+# -------------------------
+# User Input
+# -------------------------
 feature_description = st.text_area("Enter website URL or feature description:")
 
+# -------------------------
+# Generate Button
+# -------------------------
 if st.button("Generate Test Cases"):
-    with st.spinner("Generating..."):
-        prompt = f"""
+    if not feature_description.strip():
+        st.error("⚠️ Please enter a feature description or URL first.")
+    else:
+        with st.spinner("⚡ Generating test cases..."):
+            # Prompt for Gemini
+            prompt = f"""
 You are a QA Test Specialist. 
 Generate **manual regression test cases** for the following feature/website:
 
@@ -38,11 +52,41 @@ Make sure the response is:
 - Uses `<br>` for line breaks inside table cells
 """
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",  # or gpt-4o, gpt-5 if available
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
+            # Call Gemini
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(prompt)
 
-        output = response.choices[0].message.content
-        st.markdown(output, unsafe_allow_html=True)
+            # Get text output
+            output_text = response.text
+
+            # -------------------------
+            # Display raw Markdown output
+            # -------------------------
+            st.markdown("### 📋 Generated Test Cases")
+            st.markdown(output_text, unsafe_allow_html=True)
+
+            # -------------------------
+            # Try extracting the manual test case table
+            # -------------------------
+            st.markdown("---")
+            st.subheader("⬇️ Download Manual Test Cases as CSV")
+
+            # Extract Markdown table (Manual Regression Test Cases)
+            table_match = re.search(r"\| Test Case ID.*?\n((?:\|.*?\n)+)", output_text, re.DOTALL)
+            if table_match:
+                table_md = "| Test Case ID | Title | Preconditions | Steps | Expected Result |\n" + table_match.group(1)
+
+                # Convert Markdown table to DataFrame
+                df = pd.read_csv(pd.compat.StringIO(table_md), sep="|", engine="python").dropna(axis=1, how="all")
+                df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+
+                # Download button
+                csv = df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="💾 Download CSV",
+                    data=csv,
+                    file_name="manual_test_cases.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.warning("⚠️ Could not parse the manual test cases table automatically. Please copy from the output above.")
