@@ -2,34 +2,35 @@
 
 # =========================================================================
 # 1. CORE LIBRARIES & API CONFIGURATION
-# Copy these import statements from your original script
 # =========================================================================
 import requests
-from selenium.webdriver.chrome.service import Service
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 import os
 import io
 import time
 from PIL import Image
-
-# Import Streamlit and Google's Generative AI library
 import streamlit as st
 import google.generativeai as genai
+import subprocess
+from playwright.sync_api import sync_playwright
 
 # Your Gemini API key
-import os
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+
+# Use a one-time command to install the browsers for Playwright
+@st.cache_resource
+def install_playwright_browsers():
+    subprocess.check_call(["playwright", "install", "chromium"])
+    return True
+
+install_playwright_browsers()
 
 # =========================================================================
 # 2. CORE LOGIC FUNCTIONS
-# Copy these entire functions from your original script
 # =========================================================================
-def browse_page(url, driver):
-    driver.get(url)
-    html = driver.page_source
+def browse_page(url, page):
+    page.goto(url)
+    html = page.content()
     soup = BeautifulSoup(html, 'html.parser')
     
     components = []
@@ -44,25 +45,8 @@ def browse_page(url, driver):
         components.append(component_details)
     return components
 
-def capture_full_screenshot(driver, image_path):
-    total_height = driver.execute_script("return document.body.scrollHeight")
-    viewport_height = driver.execute_script("return window.innerHeight")
-    
-    images = []
-    current_scroll = 0
-    while current_scroll < total_height:
-        images.append(Image.open(io.BytesIO(driver.get_screenshot_as_png())))
-        current_scroll += viewport_height
-        driver.execute_script(f"window.scrollTo(0, {current_scroll})")
-        time.sleep(1)
-    
-    stitched_image = Image.new('RGB', (images[0].width, total_height))
-    y_offset = 0
-    for img in images:
-        stitched_image.paste(img, (0, y_offset))
-        y_offset += img.height
-    
-    stitched_image.save(image_path)
+def capture_full_screenshot(page, image_path):
+    page.screenshot(path=image_path, full_page=True)
     return image_path
 
 # Function to generate test cases with both text and image input
@@ -91,7 +75,7 @@ def generate_test_cases(components, url, image_path):
         ...
         **Expected Result:** <The expected outcome>
         
-    2.  **Generate a complete set of automated test cases.** Write these in Selenium Python code. Ensure the code is robust and covers all key functionalities, using reliable element locators.
+    2.  **Generate a complete set of automated test cases.** Write these in Playwright Python code. Ensure the code is robust and covers all key functionalities, using reliable element locators.
     
     3.  Format the output clearly with headings for "Manual Regression Test Cases" and "Automated Regression Test Cases".
     """
@@ -106,7 +90,6 @@ def generate_test_cases(components, url, image_path):
 
 # =========================================================================
 # 3. STREAMLIT APP LOGIC
-# This replaces the entire "if __name__ == '__main__'" block
 # =========================================================================
 st.title("AI Test Case Generator")
 
@@ -116,54 +99,48 @@ if st.button("Generate Test Cases"):
     if not url:
         st.error("Please enter a valid URL.")
     else:
-        # Use Streamlit's spinner for a better user experience
         with st.spinner("Extracting components and capturing screenshot..."):
             
-            # Initialize Selenium driver with explicit paths
-            options = Options()
-            options.headless = True
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
+            # This is the new Playwright block
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
 
-            # Tell Selenium where to find the browser and driver
-            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+                image_path = "full_page_screenshot.png"
+                output_filename = "test_cases.txt"
 
-            
-            image_path = "full_page_screenshot.png"
-            output_filename = "test_cases.txt"
-            
-            try:
-                components = browse_page(url, driver)
-                image_path = capture_full_screenshot(driver, image_path)
+                try:
+                    components = browse_page(url, page)
+                    image_path = capture_full_screenshot(page, image_path)
 
-                st.info(f"Extracted components and captured screenshot. Generating test cases...")
-                
-                test_cases = generate_test_cases(components, url, image_path)
-                
-                if test_cases:
-                    st.success("Test cases generated successfully! 🎉")
-                    st.markdown("### Generated Test Cases")
-                    st.text_area("Test Cases", test_cases, height=500)
+                    st.info(f"Extracted components and captured screenshot. Generating test cases...")
                     
-                    # Write the output to a text file
-                    with open(output_filename, "w", encoding="utf-8") as file:
-                        file.write(test_cases)
+                    test_cases = generate_test_cases(components, url, image_path)
                     
-                    # Add a download button
-                    with open(output_filename, "rb") as file:
-                        st.download_button(
-                            label="Download Test Cases as TXT",
-                            data=file,
-                            file_name=output_filename,
-                            mime="text/plain"
-                        )
-                else:
-                    st.error("Failed to generate test cases.")
+                    if test_cases:
+                        st.success("Test cases generated successfully! 🎉")
+                        st.markdown("### Generated Test Cases")
+                        st.text_area("Test Cases", test_cases, height=500)
+                        
+                        # Write the output to a text file
+                        with open(output_filename, "w", encoding="utf-8") as file:
+                            file.write(test_cases)
+                        
+                        # Add a download button
+                        with open(output_filename, "rb") as file:
+                            st.download_button(
+                                label="Download Test Cases as TXT",
+                                data=file,
+                                file_name=output_filename,
+                                mime="text/plain"
+                            )
+                    else:
+                        st.error("Failed to generate test cases.")
+                        
+                except Exception as e:
+                    st.error(f"An error occurred during generation: {e}")
                     
-            except Exception as e:
-                st.error(f"An error occurred during generation: {e}")
-                
-            finally:
-                driver.quit()
-                if os.path.exists(image_path):
-                    os.remove(image_path)
+                finally:
+                    browser.close()
+                    if os.path.exists(image_path):
+                        os.remove(image_path)
