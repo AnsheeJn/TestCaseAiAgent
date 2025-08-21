@@ -1,2 +1,11 @@
-firefox-esr
-geckodriver
+libglib2.0-0
+libnss3
+libfontconfig1
+libexpat1
+libx11-6
+libxcursor1
+libxrandr2
+libxscrnsaver1
+libxss1
+libgtk-3-0
+libgconf-2-4
