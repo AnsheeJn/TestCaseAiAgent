@@ -118,10 +118,17 @@ if st.button("Generate Test Cases"):
         # Use Streamlit's spinner for a better user experience
         with st.spinner("Extracting components and capturing screenshot..."):
             
-            # Initialize the Selenium driver here, not in the main function
+            # Initialize Selenium driver with explicit paths
             options = Options()
             options.headless = True
-            driver = webdriver.Chrome(options=options)
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+
+            # Tell Selenium where to find the browser and driver
+            options.binary_location = "/usr/bin/chromium"
+            service = Service(executable_path="/usr/bin/chromedriver")
+            
+            driver = webdriver.Chrome(service=service, options=options)
             
             image_path = "full_page_screenshot.png"
             output_filename = "test_cases.txt"
@@ -151,18 +158,6 @@ if st.button("Generate Test Cases"):
                             file_name=output_filename,
                             mime="text/plain"
                         )
-                    with st.spinner("Extracting components and capturing screenshot..."):
-                        # Initialize Selenium driver with explicit paths
-                            options = Options()
-                            options.headless = True
-                            options.add_argument('--no-sandbox')
-                            options.add_argument('--disable-dev-shm-usage')
-
-                            # Tell Selenium where to find the browser and driver
-                            options.binary_location = "/usr/bin/chromium"
-                            service = Service(executable_path="/usr/bin/chromedriver")
-    
-                            driver = webdriver.Chrome(service=service, options=options)    
                 else:
                     st.error("Failed to generate test cases.")
                     
