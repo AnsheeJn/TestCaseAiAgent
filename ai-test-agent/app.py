@@ -1,97 +1,84 @@
 # app.py
 
-# =========================================================================
-# 1. CORE LIBRARIES & API CONFIGURATION
-# =========================================================================
 import requests
 from bs4 import BeautifulSoup
 import os
-import io
-import time
-from PIL import Image
 import streamlit as st
 import google.generativeai as genai
-import subprocess
-from playwright.sync_api import sync_playwright
+from PIL import Image
+from io import BytesIO
 
-# Your Gemini API key
+# Configure Gemini
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
-# Use a one-time command to install the browsers for Playwright
-# This is a robust way to ensure the browser is available
-# Use a one-time command to install the browsers for Playwright
-try:
-    subprocess.run(["playwright", "install", "--with-deps", "firefox"], check=True)
-except subprocess.CalledProcessError as e:
-    st.error(f"Failed to install Playwright browsers: {e}")
-
 # =========================================================================
-# 2. CORE LOGIC FUNCTIONS
+# FUNCTIONS
 # =========================================================================
-def browse_page(url, page):
-    page.goto(url)
-    html = page.content()
-    soup = BeautifulSoup(html, 'html.parser')
-    
-    components = []
-    for tag in soup.find_all(['button', 'input', 'a', 'form']):
-        component_details = {
-            'tag': tag.name,
-            'text': tag.text.strip(),
-            'id': tag.get('id'),
-            'class': tag.get('class'),
-            'attributes': dict(tag.attrs),
-        }
-        components.append(component_details)
-    return components
+def browse_page(url):
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        components = []
+        for tag in soup.find_all(['button', 'input', 'a', 'form']):
+            component_details = {
+                'tag': tag.name,
+                'text': tag.text.strip(),
+                'id': tag.get('id'),
+                'class': tag.get('class'),
+                'attributes': dict(tag.attrs),
+            }
+            components.append(component_details)
+        return components
+    except Exception as e:
+        st.error(f"Error fetching page: {e}")
+        return []
 
-def capture_full_screenshot(page, image_path):
-    page.screenshot(path=image_path, full_page=True)
-    return image_path
-
-# Function to generate test cases with both text and image input
-def generate_test_cases(components, url, image_path):
-    prompt = f"""
-    You are a professional QA engineer. Your task is to analyze a website and a screenshot to generate all possible regression test cases.
-    The website URL is: {url}
-    
-    Here is a list of its key components and their attributes:
-    {components}
-    
-    Based on the provided HTML components and the visual information from the screenshot, perform the following tasks:
-    
-    1.  **Generate a complete set of manual regression test cases.** These test cases must be exhaustive, covering all functional, visual, and performance aspects of the page.
-        
-        **CRITICAL INSTRUCTION FOR OUTPUT FORMAT:**
-        - Do not use any HTML tags like <br> or <div>.
-        - Use plain text only.
-        - Each test case must start with a new line and follow this structure precisely:
-        
-        **Test Case Title:** <A clear and concise title>
-        **Preconditions:** <Any conditions needed to start the test>
-        **Steps:**
-        1. <First step>
-        2. <Second step>
-        ...
-        **Expected Result:** <The expected outcome>
-        
-    2.  **Generate a complete set of automated test cases.** Write these in Playwright Python code. Ensure the code is robust and covers all key functionalities, using reliable element locators.
-    
-    3.  Format the output clearly with headings for "Manual Regression Test Cases" and "Automated Regression Test Cases".
-    """
+def capture_screenshot(url):
+    # Replace with your ScreenshotMachine API key
+    API_KEY = os.environ.get("SCREENSHOT_API_KEY")
+    endpoint = f"https://api.screenshotmachine.com/?key={API_KEY}&url={url}&dimension=1024xfull"
     
     try:
-        img = Image.open(image_path)
-        model = genai.GenerativeModel('gemini-1.5-flash-latest') 
-        response = model.generate_content([prompt, img])
+        response = requests.get(endpoint)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content))
+        return img
+    except Exception as e:
+        st.warning(f"Screenshot capture failed: {e}")
+        return None
+
+def generate_test_cases(components, url, img=None):
+    prompt = f"""
+    You are a professional QA engineer. Your task is to analyze a website and generate regression test cases.
+    The website URL is: {url}
+
+    Here is a list of its key components and their attributes:
+    {components}
+
+    Tasks:
+    1. Generate manual regression test cases.
+    2. Generate automated regression test cases in Playwright Python.
+
+    Format:
+    - Manual Regression Test Cases
+    - Automated Regression Test Cases
+    """
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        if img:
+            response = model.generate_content([prompt, img])
+        else:
+            response = model.generate_content([prompt])
         return response.text
     except Exception as e:
         return f"An error occurred while generating test cases: {e}"
 
 # =========================================================================
-# 3. STREAMLIT APP LOGIC
+# STREAMLIT UI
 # =========================================================================
-st.title("AI Test Case Generator")
+st.title("AI Test Case Generator with Screenshot")
 
 url = st.text_input("Enter the webpage URL:")
 
@@ -100,47 +87,32 @@ if st.button("Generate Test Cases"):
         st.error("Please enter a valid URL.")
     else:
         with st.spinner("Extracting components and capturing screenshot..."):
-            
-            # This is the new Playwright block
-            with sync_playwright() as p:
-                browser = p.firefox.launch(headless=True)
-                page = browser.new_page()
+            components = browse_page(url)
+            screenshot_img = capture_screenshot(url)
 
-                image_path = "full_page_screenshot.png"
-                output_filename = "test_cases.txt"
+            if not components:
+                st.error("No components extracted.")
+            else:
+                st.info("Generating test cases...")
+                test_cases = generate_test_cases(components, url, screenshot_img)
 
-                try:
-                    components = browse_page(url, page)
-                    image_path = capture_full_screenshot(page, image_path)
+                if test_cases:
+                    st.success("Test cases generated successfully! 🎉")
+                    st.text_area("Test Cases", test_cases, height=500)
 
-                    st.info(f"Extracted components and captured screenshot. Generating test cases...")
-                    
-                    test_cases = generate_test_cases(components, url, image_path)
-                    
-                    if test_cases:
-                        st.success("Test cases generated successfully! 🎉")
-                        st.markdown("### Generated Test Cases")
-                        st.text_area("Test Cases", test_cases, height=500)
-                        
-                        # Write the output to a text file
-                        with open(output_filename, "w", encoding="utf-8") as file:
-                            file.write(test_cases)
-                        
-                        # Add a download button
-                        with open(output_filename, "rb") as file:
-                            st.download_button(
-                                label="Download Test Cases as TXT",
-                                data=file,
-                                file_name=output_filename,
-                                mime="text/plain"
-                            )
-                    else:
-                        st.error("Failed to generate test cases.")
-                        
-                except Exception as e:
-                    st.error(f"An error occurred during generation: {e}")
-                    
-                finally:
-                    browser.close()
-                    if os.path.exists(image_path):
-                        os.remove(image_path)
+                    if screenshot_img:
+                        st.image(screenshot_img, caption="Captured Screenshot", use_column_width=True)
+
+                    # Save results
+                    output_filename = "test_cases.txt"
+                    with open(output_filename, "w", encoding="utf-8") as file:
+                        file.write(test_cases)
+                    with open(output_filename, "rb") as file:
+                        st.download_button(
+                            label="Download Test Cases as TXT",
+                            data=file,
+                            file_name=output_filename,
+                            mime="text/plain"
+                        )
+                else:
+                    st.error("Failed to generate test cases.")
