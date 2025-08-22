@@ -5,6 +5,9 @@ import google.generativeai as genai
 import mimetypes
 import streamlit as st
 import base64
+import requests # Ensure this is explicitly at the top
+from bs4 import BeautifulSoup # Ensure this is explicitly at the top
+from io import BytesIO # Ensure this is explicitly at the top
 
 # =========================================================================
 # 1. CONFIG
